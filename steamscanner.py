@@ -1,5 +1,5 @@
 #Hyduke Software 2023
-#Version 1.0  30/12/2023
+#Version 1.0.1
 #This program will check the Steam API for a user's game count, store in an SQLite database, then compare with previous date's count
 #Then creates a web page to display, recreated every run of this file
 #Default API ignores free games with no playtime
@@ -15,7 +15,7 @@ from datetime import datetime as dt
 #### Initilisations, required values ########
 con         = sqlite3.connect("steam.db")
 apikey      = ""  #enter your API key from https://steamcommunity.com/dev/apikey
-userid      = ""  #enter the userID from Steam
+userid      = ""                 #enter the userID from Steam
 api_url     = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key="+apikey+"&steamid="+userid+"&format=json"
 webFileName = "steam.html"
 
@@ -56,6 +56,14 @@ def checkIfTodaysRecordExists():
     elif ( int(result) < 0): 
         return False
     
+def rowCounter():
+    sqlString = "SELECT COUNT(*) FROM steam"
+    dbCursor = con.cursor()
+    dbCursor.execute(sqlString)
+    rows = dbCursor.fetchall()
+    result = countCleaner(rows)
+    return int(result)
+
 def deleteRow(date):
     #deletes rows matching a date, I expect it would delete all of the same date if they exist
     sqlString = "delete from steam where date='{}'".format(date)
@@ -99,6 +107,8 @@ def insertIntodatabase():
 
 ####################### Comparison subroutines ###########
 def findLastPurchase():
+    if (countPreviousEntries() < 1):
+        return "NEVER"
     today_count_int   =   getTodaysGameCount()
     sqlString = "select date from steam WHERE {0} > gamecount ORDER by date DESC, gamecount LIMIT 1".format(str(today_count_int)) #the current game count value
     print(sqlString)
@@ -107,6 +117,18 @@ def findLastPurchase():
     rows = dbCursor.fetchall()
     print(rows)
     return countCleaner(rows)
+
+def countPreviousEntries():
+    #to fix the problem of no previously lower values in findLastPurchase()
+    today_count_int   =   getTodaysGameCount()
+    sqlString         = "select COUNT(*) from steam WHERE {0} > gamecount".format(str(today_count_int)) #the current game count value
+    print(sqlString)
+    dbCursor = con.cursor()
+    dbCursor.execute(sqlString)
+    rows = dbCursor.fetchall()
+    print(rows)
+    return int(countCleaner(rows))
+
 
 def getTodaysGameCount():
 #compares today's count with yesterday
@@ -124,12 +146,15 @@ def getTodaysGameCount():
 ############ Create web page ###############
 def createWebPage():
      today_count_int   =   getTodaysGameCount()
-     print ("in the create web page: print last pruchase")
+     comment           =   ''
      today = dt.now()
      lastpurchasedate = findLastPurchase()
-     datediff = compareDatabaseFormatDateWithToday(lastpurchasedate)
+     if (lastpurchasedate != "NEVER"):
+        datediff = compareDatabaseFormatDateWithToday(lastpurchasedate)
+        comment ='Days since last game purchase {0}'.format(datediff.days)    #comment on the difference
+     elif (lastpurchasedate == "NEVER"):
+        comment ='No older data available'  #comment on the difference
      #gets the values
-     comment ='Days since last game purchase {0}'.format(datediff.days)    #comment on the difference
      html ="<html><title>Steam data checker 2000</title><head></head><body style=\"background-color:black;\"><p style=\"color:green\">Page generated at {0}<br>Today's game total:     {1}<br>{2} </body></html>".format(today.strftime("%d-%m-%Y %H:%M"),today_count_int,comment)
      writeWebPageFile (html)
 
