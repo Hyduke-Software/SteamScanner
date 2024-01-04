@@ -162,7 +162,9 @@ def createWebPage():
      if (lastpurchasedate == "Code 2"):
          comment ='<b><font-size=10>0 days since last purchase!</b></size>'
          #This is the most recent date the user's gamecount was lower than today's. 
-     elif (lastpurchasedate != "NEVER" and lastpurchasedate != "Code 2"):
+     elif (lastpurchasedate == "Code1"):
+         comment = "not enough data"
+     elif (lastpurchasedate != "NEVER" and lastpurchasedate != "Code 2" and lastpurchasedate != "Code 1"):
         datediff = compareDatabaseFormatDateWithToday(lastpurchasedate)
         comment ='{0} days since last game purchase'.format(datediff.days)   
      html ="<html><title>Steam data checker 2000</title><head></head><body style=\"background-color:black;\"><p style=\"color:green\">Page generated at {0}<br>Today's game total:     {1}<br>{2} </body></html>".format(today.strftime("%d-%m-%Y %H:%M"),today_count_int,comment)
