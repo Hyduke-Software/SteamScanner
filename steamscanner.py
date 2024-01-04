@@ -1,5 +1,5 @@
 #Hyduke Software 2023
-#Version 1.0.1
+#Version 1.0.2
 #This program will check the Steam API for a user's game count, store in an SQLite database, then compare with previous date's count
 #Then creates a web page to display, recreated every run of this file
 #Default API ignores free games with no playtime
@@ -14,8 +14,8 @@ from datetime import datetime as dt
 
 #### Initilisations, required values ########
 con         = sqlite3.connect("steam.db")
-apikey      = ""  #enter your API key from https://steamcommunity.com/dev/apikey
-userid      = ""                 #enter the userID from Steam
+apikey      = "3EE3C504441261FDF7F14C2756D406CA"  #enter your API key from https://steamcommunity.com/dev/apikey
+userid      = "76561198051420427"                 #enter the userID from Steam
 api_url     = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key="+apikey+"&steamid="+userid+"&format=json"
 webFileName = "steam.html"
 
@@ -25,16 +25,23 @@ def countCleaner(unclean_Count):
      #cleans a count value returned from SQL as it returns the value like [(420,)]
     cleaned_Count = str(unclean_Count).replace('[','').replace(']','').replace(',','').replace(')','').replace(']','').replace('(','').replace('\'','')
     cleaned_Count.strip()
-    return cleaned_Count
+    return int(cleaned_Count)
+
+def textCleaner(text):
+     #cleans a text value returned from SQL as it returns the value like [(420,)]
+    cleaned_text = str(text).replace('[','').replace(']','').replace(')','').replace(']','').replace('(','').replace('\'','')
+    cleaned_text.strip()
+    return cleaned_text
 
 def compareDatabaseFormatDateWithToday(lastpurchasedate):
     #Converts the text database date and compares with today
     #todo: spin this off into a function to convert the db string dates into real dates
-    lastDay     = int(lastpurchasedate[0]+lastpurchasedate[1])
-    lastMonth   = int(lastpurchasedate[3]+lastpurchasedate[4])
-    lastYear    = int(lastpurchasedate[6]+lastpurchasedate[7]+lastpurchasedate[8]+lastpurchasedate[9])
+    lastDay     = int(lastpurchasedate[8]+lastpurchasedate[9])
+    lastMonth   = int(lastpurchasedate[5]+lastpurchasedate[6])
+    lastYear    = int(lastpurchasedate[0]+lastpurchasedate[1]+lastpurchasedate[2]+lastpurchasedate[3])
     #an unfortunant way to handle time and date- to draws the chars out of the string
-    dateOfLastPurchase = datetime.date(day=lastDay, month=lastMonth, year=lastYear, )
+    #dateOfLastPurchase = datetime.date(day=lastDay, month=lastMonth, year=lastYear, )
+    dateOfLastPurchase = datetime.date(year=lastYear, month=lastMonth, day=lastDay)
     today = dt.now().date()
     delta = today - dateOfLastPurchase
     #calculates the days
@@ -42,7 +49,7 @@ def compareDatabaseFormatDateWithToday(lastpurchasedate):
 
 def checkIfTodaysRecordExists():
      #checks the database for today's entry, if so it will not create a new one
-    today = dt.now().strftime("%d-%m-%Y")
+    today = dt.now().strftime("%Y-%m-%d")
     sqlString = "SELECT COUNT(*) FROM steam WHERE date ='{}'".format(today) #the current game count value
     print(sqlString)
     dbCursor = con.cursor()
@@ -62,7 +69,7 @@ def rowCounter():
     dbCursor.execute(sqlString)
     rows = dbCursor.fetchall()
     result = countCleaner(rows)
-    return int(result)
+    return result
 
 def deleteRow(date):
     #deletes rows matching a date, I expect it would delete all of the same date if they exist
@@ -95,7 +102,7 @@ def getJSONProcessValues():
 
 def insertIntodatabase():
     #(date, gamecount, appids)
-    today = dt.now().strftime("%d-%m-%Y") #gets the date in a 20-10-2023 format
+    today = dt.now().strftime("%Y-%m-%d") #gets the date in a 20-10-2023 format #04/01/2024 changed to yyyy-mm-dd for SQL compatability
     if (checkIfTodaysRecordExists() == True):
         print("Deleting existing row, recreating")
         deleteRow(today)
@@ -105,18 +112,20 @@ def insertIntodatabase():
     dbCursor.execute("INSERT INTO steam('date', 'gamecount', 'appids') VALUES(?,?,?)", (today,gameCount, appstring))
     con.commit()
 
-####################### Comparison subroutines ###########
+####################### Comparison subroutines ########################
 def findLastPurchase():
-    if (countPreviousEntries() < 1):
-        return "NEVER"
+    if (countPreviousEntries() == 0):
+        return "Code 1"
     today_count_int   =   getTodaysGameCount()
-    sqlString = "select date from steam WHERE {0} > gamecount ORDER by date DESC, gamecount LIMIT 1".format(str(today_count_int)) #the current game count value
-    print(sqlString)
+
+    sqlString = "select date from steam WHERE gamecount >= {0} ORDER by date DESC, gamecount LIMIT 1 OFFSET 1".format(str(today_count_int))
     dbCursor = con.cursor()
     dbCursor.execute(sqlString)
     rows = dbCursor.fetchall()
-    print(rows)
-    return countCleaner(rows)
+    print (textCleaner(rows))
+    if ((textCleaner(rows) =='')):
+     return "Code 2"  
+    return textCleaner(rows)
 
 def countPreviousEntries():
     #to fix the problem of no previously lower values in findLastPurchase()
@@ -127,19 +136,19 @@ def countPreviousEntries():
     dbCursor.execute(sqlString)
     rows = dbCursor.fetchall()
     print(rows)
-    return int(countCleaner(rows))
+    return countCleaner(rows)
 
 
 def getTodaysGameCount():
 #compares today's count with yesterday
-    today = dt.now().strftime("%d-%m-%Y")
+    today = dt.now().strftime("%Y-%m-%d")
     dbCursor = con.cursor()
     exestring = "SELECT gamecount FROM steam WHERE date =\'"+today+"\'"
     dbCursor.execute(exestring)
     today_count = dbCursor.fetchall()
     clean_today_count = countCleaner(today_count)
     #cast to int and compare
-    today_count_int =int(clean_today_count)
+    today_count_int =clean_today_count
 
     return today_count_int
 
@@ -149,12 +158,13 @@ def createWebPage():
      comment           =   ''
      today = dt.now()
      lastpurchasedate = findLastPurchase()
-     if (lastpurchasedate != "NEVER"):
+     print ("line 173")
+     if (lastpurchasedate == "Code 2"):
+         comment ='<b><font-size=10>0 days since last purchase!</b></size>'
+         #This is the most recent date the user's gamecount was lower than today's. 
+     elif (lastpurchasedate != "NEVER" and lastpurchasedate != "Code 2"):
         datediff = compareDatabaseFormatDateWithToday(lastpurchasedate)
-        comment ='Days since last game purchase {0}'.format(datediff.days)    #comment on the difference
-     elif (lastpurchasedate == "NEVER"):
-        comment ='No older data available'  #comment on the difference
-     #gets the values
+        comment ='{0} days since last game purchase'.format(datediff.days)   
      html ="<html><title>Steam data checker 2000</title><head></head><body style=\"background-color:black;\"><p style=\"color:green\">Page generated at {0}<br>Today's game total:     {1}<br>{2} </body></html>".format(today.strftime("%d-%m-%Y %H:%M"),today_count_int,comment)
      writeWebPageFile (html)
 
